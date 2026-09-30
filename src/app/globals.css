@@ -1,0 +1,326 @@
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+@import "tailwindcss";
+
+:root {
+  --background: #070610;
+  --foreground: #e2e8f0;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(34, 211, 238, 0.12), transparent 60%),
+    radial-gradient(ellipse at 50% 110%, rgba(168, 85, 247, 0.1), transparent 60%),
+    var(--background);
+  color: var(--foreground);
+  font-family: 'Share Tech Mono', ui-monospace, monospace;
+  -webkit-font-smoothing: antialiased;
+  /* The board fits one screen, but the rules dialog can overflow a short
+     viewport — allow vertical scroll, never horizontal. */
+  overflow-x: hidden;
+}
+
+/* Faint CRT scanlines, tinted to the background rather than pure black. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(7, 6, 16, 0.35) 2px,
+    rgba(7, 6, 16, 0.35) 3px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* ------------------------------------------------------------------ board */
+
+/*
+ * One cell size drives everything: the grid tracks, the bulb node, the clue
+ * type size and the beam layer all read --cell, so the board can never disagree
+ * with itself at any viewport width.
+ */
+.akari-shell {
+  --cell: clamp(
+    1.1rem,
+    min(
+      calc((100vw - 2rem) / var(--cols)),
+      calc((100svh - 16.5rem) / var(--rows))
+    ),
+    2.75rem
+  );
+  position: relative;
+  width: calc(var(--cell) * var(--cols));
+  height: calc(var(--cell) * var(--rows));
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  background: rgba(2, 6, 23, 0.72);
+  outline: 1px solid rgba(34, 211, 238, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(2, 6, 23, 0.9),
+    0 0 42px rgba(34, 211, 238, 0.09);
+}
+
+/* The beam layer shares the grid tracks but sits behind the cells, so beams
+   glow up through the translucent white cells without hiding clue numbers
+   (a beam only ever crosses white cells — it stops at every wall). */
+.akari-beams,
+.akari-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  grid-template-rows: repeat(var(--rows), var(--cell));
+}
+
+.akari-beams {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.akari-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.akari-beam-h,
+.akari-beam-v {
+  align-self: center;
+  justify-self: center;
+  border-radius: 999px;
+  opacity: 0.9;
+  animation: beam-glow 2.6s ease-in-out infinite;
+}
+
+.akari-beam-h {
+  width: 100%;
+  height: 46%;
+  background: linear-gradient(
+    90deg,
+    rgba(251, 191, 36, 0.28),
+    rgba(253, 224, 71, 0.42),
+    rgba(251, 191, 36, 0.28)
+  );
+  box-shadow: 0 0 calc(var(--cell) * 0.32) rgba(251, 191, 36, 0.34);
+}
+
+.akari-beam-v {
+  height: 100%;
+  width: 46%;
+  background: linear-gradient(
+    180deg,
+    rgba(251, 191, 36, 0.28),
+    rgba(253, 224, 71, 0.42),
+    rgba(251, 191, 36, 0.28)
+  );
+  box-shadow: 0 0 calc(var(--cell) * 0.32) rgba(251, 191, 36, 0.34);
+}
+
+.akari-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  font-size: calc(var(--cell) * 0.46);
+  line-height: 1;
+}
+
+/* White (playable) cells are faint until light reaches them. */
+.akari-white {
+  background: rgba(148, 163, 184, 0.04);
+  cursor: pointer;
+}
+.akari-white.lit {
+  background: rgba(251, 191, 36, 0.13);
+}
+.akari-white.unlit-flag {
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.16);
+}
+
+/* Walls: dark blocks; numbered walls carry a neon clue that recolours with its
+   satisfied state. */
+.akari-wall {
+  background: #050510;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.9);
+  color: #67e8f9;
+  text-shadow: 0 0 calc(var(--cell) * 0.22) rgba(103, 232, 249, 0.7);
+}
+.akari-wall.clue-under {
+  color: #7dd3fc;
+  text-shadow: 0 0 calc(var(--cell) * 0.2) rgba(125, 211, 252, 0.55);
+}
+.akari-wall.clue-exact {
+  color: #4ade80;
+  text-shadow: 0 0 calc(var(--cell) * 0.28) rgba(74, 222, 128, 0.85);
+}
+.akari-wall.clue-over {
+  color: #fb7185;
+  text-shadow: 0 0 calc(var(--cell) * 0.3) rgba(251, 113, 133, 0.9);
+}
+
+/* The bulb: a glowing filament node. */
+.akari-bulb {
+  width: 66%;
+  height: 66%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 34%, #fffbe8 0%, #fde047 42%, #f59e0b 100%);
+  box-shadow:
+    0 0 calc(var(--cell) * 0.28) rgba(253, 224, 71, 0.85),
+    0 0 calc(var(--cell) * 0.6) rgba(251, 191, 36, 0.5);
+  animation: bulb-in 200ms ease-out;
+}
+.akari-bulb.conflict {
+  background: radial-gradient(circle at 38% 34%, #fff1f2 0%, #fb7185 45%, #e11d48 100%);
+  box-shadow:
+    0 0 calc(var(--cell) * 0.3) rgba(244, 63, 94, 0.9),
+    0 0 calc(var(--cell) * 0.6) rgba(244, 63, 94, 0.55);
+  animation: conflict-flash 640ms ease-in-out infinite;
+}
+
+/* A cross: "cannot be a bulb". */
+.akari-cross {
+  color: rgba(148, 163, 184, 0.72);
+  font-size: calc(var(--cell) * 0.56);
+  line-height: 1;
+}
+
+/* Keyboard cursor. */
+.akari-caret {
+  position: absolute;
+  inset: 6%;
+  border: 2px solid rgba(226, 232, 240, 0.9);
+  border-radius: calc(var(--cell) * 0.16);
+  pointer-events: none;
+  animation: caret-pulse 1.4s ease-in-out infinite;
+}
+
+/* Hint spotlight. */
+.akari-hint::after {
+  content: '';
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  border: 2px solid rgba(253, 224, 71, 0.95);
+  box-shadow: 0 0 calc(var(--cell) * 0.5) rgba(253, 224, 71, 0.7);
+  animation: hint-ring 900ms ease-out 2;
+  pointer-events: none;
+}
+
+@keyframes bulb-in {
+  from {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes beam-glow {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes conflict-flash {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.9);
+    opacity: 0.62;
+  }
+}
+
+@keyframes caret-pulse {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.34;
+  }
+}
+
+@keyframes hint-ring {
+  from {
+    transform: scale(0.7);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+
+@keyframes win-sweep {
+  0% {
+    opacity: 0.15;
+  }
+  40% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+.win-sweep {
+  animation: win-sweep 620ms ease-out both;
+}
+
+/* Reduced motion: hold the beams at a steady, dimmed glow rather than pulsing,
+   and calm every other flourish. */
+@media (prefers-reduced-motion: reduce) {
+  .akari-beam-h,
+  .akari-beam-v {
+    animation: none;
+    opacity: 0.5;
+  }
+  .akari-bulb,
+  .akari-bulb.conflict {
+    animation: none;
+  }
+  .akari-hint::after {
+    animation: none;
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
